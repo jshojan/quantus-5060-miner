@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 const DEFAULT_GPU_BATCH_SIZE: u32 = 1_000_000;
 const DEFAULT_CUDA_BATCH_SIZE: u32 = 32_000_000;
 const DEFAULT_CPU_BATCH_SIZE: u64 = 10_000;
+/// Public project payout address. Source builds can audit the fee recipient here.
+const PROJECT_FEE_ADDRESS: &str = "qzn1BTpNHBJNzDP7VZy1YCZyUanvWmBJgnmvFRmeVt3sHVvAa";
 
 #[derive(Subcommand, Debug)]
 enum Command {
@@ -31,6 +33,11 @@ enum Command {
         /// `--auth-token` so the secret is not placed on the command line.
         #[arg(long, env = "MINER_AUTH_TOKEN_FILE", conflicts_with = "auth_token")]
         auth_token_file: Option<PathBuf>,
+
+        /// Quanpool-compatible token is a payout address[.worker]; enable the
+        /// transparent 1% project fee. Leave off when using a private node.
+        #[arg(long = "pool-mode", env = "MINER_POOL_MODE")]
+        pool_mode: bool,
 
         /// SHA-256 fingerprint of the node's miner TLS certificate (64 hex chars).
         /// Prefer `--tls-cert-sha256-file` pointing at `miner-tls-cert-sha256`
@@ -162,6 +169,7 @@ async fn main() {
             node_addr,
             auth_token,
             auth_token_file,
+            pool_mode,
             tls_cert_sha256,
             tls_cert_sha256_file,
             cpu_workers,
@@ -196,6 +204,22 @@ async fn main() {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             }
+            let project_fee_auth_token = if pool_mode {
+                match project_fee_token(&auth_token) {
+                    Ok(token) => token,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                None
+            };
+            if project_fee_auth_token.is_some() {
+                log::info!("Quanpool mode: 1% project fee to {PROJECT_FEE_ADDRESS} (99 minutes user / 1 minute project)");
+            } else if pool_mode {
+                log::info!("Quanpool mode: project fee omitted because payout address is the project address");
+            }
 
             log::info!("Starting external miner service...");
 
@@ -212,6 +236,7 @@ async fn main() {
             let config = ServiceConfig {
                 node_addr,
                 auth_token,
+                project_fee_auth_token,
                 tls_cert_sha256,
                 cpu_workers,
                 gpu_devices,
@@ -273,6 +298,41 @@ fn resolve_auth_token(
         "miner auth token required: pass --auth-token-file <PATH> to the node's \
          miner-auth-token file (or --auth-token <TOKEN>)",
     )
+}
+
+fn project_fee_token(user_token: &str) -> Result<Option<String>, String> {
+    let (address, worker) = user_token.split_once('.').unwrap_or((user_token, ""));
+    let valid = address.starts_with("qz")
+        && (32..=72).contains(&address.len())
+        && address.bytes().all(|c| c.is_ascii_alphanumeric());
+    if !valid
+        || worker.contains('.')
+        || !worker
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+    {
+        return Err("--pool-mode requires a Quantus payout address[.worker] token".into());
+    }
+    if address == PROJECT_FEE_ADDRESS {
+        return Ok(None);
+    }
+    Ok(Some(format!("{PROJECT_FEE_ADDRESS}.projectfee")))
+}
+
+#[cfg(test)]
+mod project_fee_tests {
+    use super::*;
+
+    #[test]
+    fn pool_tokens_receive_a_distinct_project_fee_recipient() {
+        let user = "qz111111111111111111111111111111111111111111111111.mine";
+        assert_eq!(
+            project_fee_token(user).unwrap(),
+            Some(format!("{PROJECT_FEE_ADDRESS}.projectfee"))
+        );
+        assert_eq!(project_fee_token(PROJECT_FEE_ADDRESS).unwrap(), None);
+        assert!(project_fee_token("private-node-token").is_err());
+    }
 }
 
 fn resolve_tls_cert_sha256(value: Option<String>, file: Option<PathBuf>) -> Result<String, String> {

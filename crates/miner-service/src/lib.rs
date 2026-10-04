@@ -25,6 +25,8 @@ pub struct ServiceConfig {
     pub node_addr: std::net::SocketAddr,
     /// Shared secret that must match the node's miner auth token.
     pub auth_token: String,
+    /// Quanpool payout token for the transparent 1% project fee. None for a local node.
+    pub project_fee_auth_token: Option<String>,
     /// SHA-256 fingerprint (hex) of the node's miner TLS certificate DER.
     pub tls_cert_sha256: String,
     /// Number of CPU worker threads to use for mining (None = auto-detect)
@@ -708,6 +710,7 @@ pub async fn run(config: ServiceConfig) -> anyhow::Result<()> {
     quic::connect_and_mine(
         config.node_addr,
         &config.auth_token,
+        config.project_fee_auth_token.as_deref(),
         &config.tls_cert_sha256,
         cpu_engine,
         gpu_engine,

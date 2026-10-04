@@ -1,4 +1,20 @@
-# External Miner Service for Quantus Network
+# Quantus 5060 Miner
+
+This is a source fork of [Quantus-Network/quantus-miner](https://github.com/Quantus-Network/quantus-miner) at `c7838cbc86f7d74477da1771139f377a8e438072`, under its retained Apache-2.0 license. The upstream CUDA solver and consensus code are unchanged. The fork adds a transparent pool-mode project fee, tested on an RTX 5060 Ti. It has no fee for private-node mining. The project fee recipient is visible as `PROJECT_FEE_ADDRESS` in `crates/miner-cli/src/main.rs`.
+
+For a Quanpool-compatible token (`qz...` or `qz....worker`), pass `--pool-mode`. The miner sends 99 minutes of scheduled time to your payout address, then 1 minute to the project payout address. It closes the QUIC connection and changes the token at each boundary; connection/setup time is inside the fee minute, so actual credited work can be less than 1% and varies with pool difficulty and luck. If your payout address equals the project address, fee switching is omitted. The mode rejects tokens that do not look like Quantus payout addresses. A permanent project authentication failure stops mining instead of silently mining without the stated fee.
+
+```bash
+./target/release/quantus-miner serve --pool-mode \
+  --node-addr YOUR_POOL_QUIC_ENDPOINT \
+  --auth-token-file /private/path/pool-payout-token \
+  --tls-cert-sha256-file /private/path/pool-cert-fingerprint \
+  --cuda-gpu --gpu-devices 1 --cpu-workers 0
+```
+
+On 2026-10-04, a source-built fork connected to Quanpool with the local project wallet and the pool recorded 15 new accepted shares, zero stale, and zero invalid in a 35-second run. A separate 85-second integration build temporarily shortened the schedule to 15 seconds user / 5 seconds project, then Quanpool recorded 46 accepted test-user shares and 45 project-fee-worker shares, each with zero stale or invalid. The release source was restored to the 99-minute / 1-minute schedule and rebuilt. These short checks do not prove long-term uptime, a completed payout, or profitability.
+
+## Upstream documentation
 
 High-performance external mining service for Quantus Network with support for CPU, GPU, and hybrid CPU+GPU mining.
 
@@ -53,6 +69,7 @@ node's chain config dir (`<base-path>/chains/<chain>/`):
 | `--node-addr <ADDR>` | `MINER_NODE_ADDR` | Node address to connect to | `127.0.0.1:9833` |
 | `--auth-token <TOKEN>` | `MINER_AUTH_TOKEN` | Shared secret from the node's `miner-auth-token` file (not logged) | required |
 | `--auth-token-file <PATH>` | `MINER_AUTH_TOKEN_FILE` | Read the shared secret from a file (preferred) | — |
+| `--pool-mode` | `MINER_POOL_MODE` | Quanpool-compatible payout token and transparent project fee | off |
 | `--tls-cert-sha256 <HEX>` | `MINER_TLS_CERT_SHA256` | SHA-256 of the node's miner TLS cert (`miner-tls-cert-sha256` / node logs) | required |
 | `--tls-cert-sha256-file <PATH>` | `MINER_TLS_CERT_SHA256_FILE` | Read the TLS cert fingerprint from a file | — |
 | `--cpu-workers <N>` | `MINER_CPU_WORKERS` | Number of CPU worker threads | Auto-detect |

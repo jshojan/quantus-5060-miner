@@ -18,6 +18,51 @@ use quantus_miner_api::{
 use crate::{EngineType, JobStopReason, WorkerPool};
 use pow_core::format_hashrate;
 
+const FEE_CYCLE_SECS: u64 = 6000;
+const USER_SLOT_SECS: u64 = 5940;
+
+/// 99 minutes to the user's payout token, then 1 minute to the project token.
+/// The timer includes connection and job setup, so the project never receives
+/// more than 1% of scheduled wall time.
+fn fee_phase(elapsed: Duration) -> (bool, Duration) {
+    let seconds = elapsed.as_secs() % FEE_CYCLE_SECS;
+    let fee = seconds >= USER_SLOT_SECS;
+    let end = if fee { FEE_CYCLE_SECS } else { USER_SLOT_SECS };
+    (
+        fee,
+        Duration::from_secs(end - seconds) - Duration::from_nanos(elapsed.subsec_nanos() as u64),
+    )
+}
+
+#[cfg(test)]
+mod fee_tests {
+    use super::*;
+
+    #[test]
+    fn project_slot_is_exactly_one_percent_of_each_cycle() {
+        assert_eq!(
+            fee_phase(Duration::ZERO),
+            (false, Duration::from_secs(5940))
+        );
+        assert_eq!(
+            fee_phase(Duration::from_secs(5939)),
+            (false, Duration::from_secs(1))
+        );
+        assert_eq!(
+            fee_phase(Duration::from_secs(5940)),
+            (true, Duration::from_secs(60))
+        );
+        assert_eq!(
+            fee_phase(Duration::from_secs(5999)),
+            (true, Duration::from_secs(1))
+        );
+        assert_eq!(
+            fee_phase(Duration::from_secs(6000)),
+            (false, Duration::from_secs(5940))
+        );
+    }
+}
+
 /// Connect to a node and start mining.
 ///
 /// This function connects to the node, receives mining jobs, and sends results.
@@ -27,6 +72,7 @@ use pow_core::format_hashrate;
 pub async fn connect_and_mine(
     node_addr: SocketAddr,
     auth_token: &str,
+    project_fee_auth_token: Option<&str>,
     tls_cert_sha256: &str,
     cpu_engine: Option<Arc<dyn MinerEngine>>,
     gpu_engine: Option<Arc<dyn MinerEngine>>,
@@ -38,19 +84,61 @@ pub async fn connect_and_mine(
 
     let mut reconnect_delay = Duration::from_secs(1);
     const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(30);
+    let fee_cycle_started = Instant::now();
 
     loop {
-        log::info!("⛏️ Connecting to node at {}...", node_addr);
+        let fee_slot = project_fee_auth_token.is_some() && fee_phase(fee_cycle_started.elapsed()).0;
+        let active_token = if fee_slot {
+            project_fee_auth_token.unwrap()
+        } else {
+            auth_token
+        };
+        log::info!(
+            "⛏️ Connecting to node at {} ({} work)...",
+            node_addr,
+            if fee_slot { "project fee" } else { "user" }
+        );
 
-        match establish_connection(node_addr, auth_token, tls_cert_sha256).await {
+        match establish_connection(node_addr, active_token, tls_cert_sha256).await {
             Ok((connection, send, recv)) => {
                 log::info!("⛏️ Connected to node at {}", node_addr);
 
+                let remaining = if project_fee_auth_token.is_some() {
+                    let (current_fee_slot, remaining) = fee_phase(fee_cycle_started.elapsed());
+                    if current_fee_slot != fee_slot {
+                        connection.close(0u32.into(), b"fee slot changed during connection");
+                        continue;
+                    }
+                    Some(remaining)
+                } else {
+                    None
+                };
+
                 let mut authenticated = false;
-                if let Err(e) =
-                    handle_connection(connection, send, recv, &worker_pool, &mut authenticated)
-                        .await
-                {
+                let outcome = if let Some(remaining) = remaining {
+                    tokio::select! {
+                        result = handle_connection(connection.clone(), send, recv, &worker_pool, &mut authenticated) => Some(result),
+                        _ = tokio::time::sleep(remaining) => None,
+                    }
+                } else {
+                    Some(
+                        handle_connection(
+                            connection.clone(),
+                            send,
+                            recv,
+                            &worker_pool,
+                            &mut authenticated,
+                        )
+                        .await,
+                    )
+                };
+                if outcome.is_none() {
+                    worker_pool.stop_current_job(JobStopReason::ConnectionLost);
+                    connection.close(0u32.into(), b"scheduled payout transition");
+                    reconnect_delay = Duration::from_secs(1);
+                    continue;
+                }
+                if let Err(e) = outcome.unwrap() {
                     // Stop any running job when connection drops
                     worker_pool.stop_current_job(JobStopReason::ConnectionLost);
                     if e.downcast_ref::<quic_transport::PermanentConnectError>()
