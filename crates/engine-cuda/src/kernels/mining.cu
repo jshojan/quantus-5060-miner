@@ -426,7 +426,7 @@ __device__ __forceinline__ void hash_from_midstate(const u64 *mid,
     }
 }
 
-extern "C" __global__ void __launch_bounds__(256, 4) hash_nonces(u32 *hashes, const u32 *midstate,
+extern "C" __global__ void __launch_bounds__(256, 2) hash_nonces(u32 *hashes, const u32 *midstate,
                                        const u32 *start_nonce, u32 count) {
     u32 tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= count) {
@@ -452,7 +452,7 @@ extern "C" __global__ void __launch_bounds__(256, 4) hash_nonces(u32 *hashes, co
     }
 }
 
-extern "C" __global__ void __launch_bounds__(256, 4) mining_main(u32 *results,
+extern "C" __global__ void __launch_bounds__(256, 2) mining_main(u32 *results,
                                        const MiningParams params) {
     u32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
     u32 total_threads = params.dispatch_config[0];

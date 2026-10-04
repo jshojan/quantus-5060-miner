@@ -1,6 +1,8 @@
 # Quantus 5060 Miner
 
-This is a source fork of [Quantus-Network/quantus-miner](https://github.com/Quantus-Network/quantus-miner) at `c7838cbc86f7d74477da1771139f377a8e438072`, under its retained Apache-2.0 license. The upstream CUDA solver and consensus code are unchanged. The fork adds a transparent pool-mode project fee, tested on an RTX 5060 Ti. It has no fee for private-node mining. The project fee recipient is visible as `PROJECT_FEE_ADDRESS` in `crates/miner-cli/src/main.rs`.
+This is a source fork of [Quantus-Network/quantus-miner](https://github.com/Quantus-Network/quantus-miner) at `c7838cbc86f7d74477da1771139f377a8e438072`, under its retained Apache-2.0 license. The upstream CUDA arithmetic and consensus code are unchanged. The fork adds a transparent pool-mode project fee, tested on an RTX 5060 Ti. It has no fee for private-node mining. The project fee recipient is visible as `PROJECT_FEE_ADDRESS` in `crates/miner-cli/src/main.rs`.
+
+The CUDA launch target is tuned for this 5060 Ti. Short alternating benchmarks measured 234.48 MH/s for the selected build versus 230.22 MH/s for the upstream launch target at similar GPU power; all 10 CUDA tests passed and Quanpool accepted live shares. See [the performance evidence](docs/5060ti-optimization.md). Other cards may respond differently.
 
 For a Quanpool-compatible token (`qz...` or `qz....worker`), pass `--pool-mode`. The miner sends 99 minutes of scheduled time to your payout address, then 1 minute to the project payout address. It closes the QUIC connection and changes the token at each boundary; connection/setup time is inside the fee minute, so actual credited work can be less than 1% and varies with pool difficulty and luck. If your payout address equals the project address, fee switching is omitted. The mode rejects tokens that do not look like Quantus payout addresses. A permanent project authentication failure stops mining instead of silently mining without the stated fee.
 
