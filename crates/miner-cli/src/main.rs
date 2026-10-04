@@ -3,6 +3,7 @@ use engine_cpu::{AtomicBoolCancelCheck, EngineRange, MinerEngine};
 use miner_service::{run, ServiceConfig};
 use primitive_types::U512;
 use rand::RngCore;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -81,6 +82,14 @@ enum Command {
             default_value_t = 9900
         )]
         metrics_port: u16,
+
+        /// IP address for the metrics HTTP endpoint (default: loopback only)
+        #[arg(
+            long = "metrics-bind",
+            env = "MINER_METRICS_BIND",
+            default_value = "127.0.0.1"
+        )]
+        metrics_bind: IpAddr,
 
         /// GPU throttle delay in milliseconds between batches (0 = no throttle)
         #[arg(
@@ -178,6 +187,7 @@ async fn main() {
             cpu_batch_size,
             gpu_throttle_ms,
             metrics_port,
+            metrics_bind,
             allow_integrated,
             cuda_gpu,
             verbose,
@@ -224,13 +234,13 @@ async fn main() {
             log::info!("Starting external miner service...");
 
             // Start metrics HTTP server
-            if let Err(e) = metrics::start_http_exporter(metrics_port).await {
+            if let Err(e) = metrics::start_http_exporter(metrics_bind, metrics_port).await {
                 log::error!("Failed to start metrics exporter: {e:?}");
                 std::process::exit(1);
             }
             log::info!(
-                "Metrics available at http://0.0.0.0:{}/metrics",
-                metrics_port
+                "Metrics available at http://{}/metrics",
+                SocketAddr::new(metrics_bind, metrics_port)
             );
 
             let config = ServiceConfig {

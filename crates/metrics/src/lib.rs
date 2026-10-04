@@ -19,6 +19,7 @@
 
 use once_cell::sync::Lazy;
 use prometheus::{IntCounter, IntGauge, Registry};
+use std::net::IpAddr;
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -289,12 +290,12 @@ pub fn set_effective_cpus(n: i64) {
 // HTTP Exporter
 // ---------------------------------------------------------------------------
 
-/// Start the Prometheus HTTP exporter on `0.0.0.0:port`.
+/// Start the Prometheus HTTP exporter on the given IP address and port.
 ///
 /// Spawns the exporter as a background task and returns immediately.
 /// Serves plaintext metrics at `GET /metrics`.
 #[cfg(feature = "http-exporter")]
-pub async fn start_http_exporter(port: u16) -> Result<()> {
+pub async fn start_http_exporter(bind: IpAddr, port: u16) -> Result<()> {
     let metrics_route = warp::path("metrics").and(warp::get()).map(|| {
         let encoder = TextEncoder::new();
         let metric_families = REGISTRY.gather();
@@ -308,7 +309,7 @@ pub async fn start_http_exporter(port: u16) -> Result<()> {
             .body(String::from_utf8(buffer).unwrap_or_default())
     });
 
-    let addr: SocketAddr = ([0, 0, 0, 0], port).into();
+    let addr = SocketAddr::new(bind, port);
     tokio::spawn(async move {
         warp::serve(metrics_route).run(addr).await;
     });
@@ -318,7 +319,7 @@ pub async fn start_http_exporter(port: u16) -> Result<()> {
 
 /// No-op when HTTP exporter feature is disabled.
 #[cfg(not(feature = "http-exporter"))]
-pub async fn start_http_exporter(_port: u16) -> Result<()> {
+pub async fn start_http_exporter(_bind: IpAddr, _port: u16) -> Result<()> {
     log::warn!(
         "metrics::start_http_exporter called but 'http-exporter' feature is disabled; ignoring"
     );

@@ -81,6 +81,7 @@ node's chain config dir (`<base-path>/chains/<chain>/`):
 | `--cpu-batch-size <N>` | `MINER_CPU_BATCH_SIZE` | CPU batch size in hashes | 10000 |
 | `--gpu-throttle-ms <MS>` | `MINER_GPU_THROTTLE_MS` | Sleep duration (ms) between GPU batches | 0 |
 | `--metrics-port <PORT>` | `MINER_METRICS_PORT` | Prometheus metrics port | 9900 |
+| `--metrics-bind <IP>` | `MINER_METRICS_BIND` | Metrics listener IP; set `0.0.0.0` only when remote scraping is intended | `127.0.0.1` |
 
 ## GPU Mining
 

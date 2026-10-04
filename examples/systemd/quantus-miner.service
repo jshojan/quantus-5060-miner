@@ -19,6 +19,7 @@
 #       MINER_TLS_CERT_SHA256_FILE (or MINER_TLS_CERT_SHA256),
 #       MINER_CPU_WORKERS, MINER_GPU_DEVICES, MINER_GPU_BATCH_SIZE,
 #       MINER_CPU_BATCH_SIZE, MINER_GPU_THROTTLE_MS, MINER_METRICS_PORT,
+#       MINER_METRICS_BIND,
 #       MINER_ALLOW_INTEGRATED, MINER_VERBOSE.
 #     This unit relies on those env vars (set in /etc/default|/etc/sysconfig) so
 #     ExecStart can remain stable and simple.
@@ -31,7 +32,7 @@
 #   - The miner counts CPUs via the process affinity mask (so CPUAffinity=
 #     is respected) and emits a miner_effective_cpus metric.
 #   - The Prometheus exporter is ALWAYS on and binds plaintext HTTP on
-#     0.0.0.0:9900 by default; MINER_METRICS_PORT only changes the port.
+#     127.0.0.1:9900 by default; MINER_METRICS_BIND controls the listener IP.
 #     Firewall the port if the host is reachable from untrusted networks.
 
 [Unit]

@@ -95,10 +95,10 @@ Configuration reference (environment variables)
 - MINER_GPU_THROTTLE_MS
   - Delay between GPU batches in milliseconds (default 0 = no throttle).
 - MINER_METRICS_PORT
-  - Prometheus exporter port (default 9900). The exporter is ALWAYS on and
-    binds plaintext HTTP on all interfaces (0.0.0.0); this variable only
-    changes the port — there is no disable or loopback-only option. Firewall
-    the port or restrict it to your monitoring network.
+  - Prometheus exporter port (default 9900). The exporter uses plaintext HTTP.
+- MINER_METRICS_BIND
+  - Metrics listener IP (default 127.0.0.1). Set to 0.0.0.0 only if remote
+    scraping is intended, and restrict access to your monitoring network.
 - MINER_ALLOW_INTEGRATED
   - Allow integrated GPUs even when discrete GPUs are present.
 - EXTRA_MINER_FLAGS
@@ -127,9 +127,8 @@ Security hardening (in the unit)
 - RestrictSUIDSGID=true
 - SystemCallFilter=@system-service
 Adjust or relax as needed for your environment.
-Note: the Prometheus exporter always listens on 0.0.0.0:<MINER_METRICS_PORT>
-(default 9900) — the unit cannot disable it or bind it to loopback. Firewall
-the port if the host is reachable from untrusted networks.
+Note: the Prometheus exporter listens on
+<MINER_METRICS_BIND>:<MINER_METRICS_PORT> (127.0.0.1:9900 by default).
 
 Validation and troubleshooting
 - Check service status and logs:
